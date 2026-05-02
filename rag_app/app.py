@@ -13,12 +13,20 @@ from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import Chroma
 from loguru import logger
 
-from config import CHROMA_PERSIST_DIR, TOP_K
+from config import CHROMA_PERSIST_DIR, TOP_K, check_ollama_running
 from ingestion.embedder import run_ingestion_pipeline
 from retrieval.chain import build_rag_chain, query_rag
 from retrieval.retriever import get_retriever, get_vectorstore
 
 st.set_page_config(page_title="RAG Agent", page_icon="📄", layout="wide")
+
+if not check_ollama_running():
+    st.error(
+        "Ollama is not running. Please start it with: `ollama serve` "
+        "and make sure you have pulled the models: "
+        "`ollama pull llama3.2` and `ollama pull nomic-embed-text`"
+    )
+    st.stop()
 
 
 class ChatMessage(TypedDict):

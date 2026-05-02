@@ -1,6 +1,6 @@
-# RAG App (LangChain + ChromaDB + Streamlit)
+# RAG App (LangChain + ChromaDB + Streamlit + Ollama)
 
-This project is a production-oriented Retrieval-Augmented Generation (RAG) application in Python 3.11 that indexes local documents into ChromaDB and answers user questions with grounded context using OpenAI embeddings and `gpt-4o-mini`.
+This project is a production-oriented Retrieval-Augmented Generation (RAG) application in Python 3.11 that indexes local documents into ChromaDB and answers questions with grounded context using fully local Ollama models (`llama3.2` + `nomic-embed-text`).
 
 ## Project Structure
 
@@ -21,7 +21,8 @@ rag_app/
 ├── utils/
 │   ├── __init__.py
 │   └── helpers.py
-├── .env.example
+├── tests/
+│   └── smoke_test.py
 └── requirements.txt
 ```
 
@@ -49,15 +50,20 @@ rag_app/
    pip install -r requirements.txt
    ```
 
-3. Configure environment variables:
+3. Pull required Ollama models:
 
    ```bash
-   copy .env.example .env
+   ollama pull llama3.2
    ```
 
-   Then edit `.env` and set:
-   ```env
-   OPENAI_API_KEY=your_real_key
+   ```bash
+   ollama pull nomic-embed-text
+   ```
+
+4. Start Ollama:
+
+   ```bash
+   ollama serve
    ```
 
 ## Run Ingestion
@@ -68,6 +74,12 @@ After implementing the ingestion pipeline logic, run the ingestion module from t
 python -m ingestion.embedder
 ```
 
+Or run the smoke test:
+
+```bash
+python tests/smoke_test.py
+```
+
 ## Run the Streamlit App
 
 ```bash
@@ -76,4 +88,4 @@ streamlit run app.py
 
 ## RAG Architecture
 
-The pipeline follows a standard local-first RAG flow: documents (`.pdf`, `.txt`, `.docx`) are loaded and normalized, split into overlapping chunks (`512/64`), embedded using `text-embedding-3-small`, and persisted in a ChromaDB collection (`rag_documents`) with on-disk storage. At query time, a retriever fetches top-k relevant chunks, an optional re-ranker narrows the context, and `gpt-4o-mini` (temperature `0`) generates a grounded answer using only retrieved evidence.
+The pipeline follows a local-first RAG flow: documents (`.pdf`, `.txt`, `.docx`) are loaded and normalized, split into overlapping chunks (`512/64`), embedded locally through Ollama with `nomic-embed-text`, and persisted in ChromaDB (`rag_documents`) on disk. At query time, an MMR retriever fetches top-k relevant chunks and `llama3.2` generates grounded answers using only retrieved context.

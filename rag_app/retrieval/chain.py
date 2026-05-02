@@ -3,12 +3,12 @@
 from typing import Any
 
 from langchain.chains import RetrievalQA
+from langchain_community.chat_models import ChatOllama
 from langchain_core.prompts import PromptTemplate
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
-from config import MAX_TOKENS, MODEL_NAME, TEMPERATURE
+from config import LLM_MAX_TOKENS, LLM_MODEL, LLM_TEMPERATURE, OLLAMA_BASE_URL
 
 
 def build_rag_chain(retriever: VectorStoreRetriever) -> RetrievalQA:
@@ -36,10 +36,11 @@ def build_rag_chain(retriever: VectorStoreRetriever) -> RetrievalQA:
                 "Answer:"
             ),
         )
-        llm = ChatOpenAI(
-            model=MODEL_NAME,
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
+        llm = ChatOllama(
+            model=LLM_MODEL,
+            base_url=OLLAMA_BASE_URL,
+            temperature=LLM_TEMPERATURE,
+            num_predict=LLM_MAX_TOKENS,
         )
         chain = RetrievalQA.from_chain_type(
             llm=llm,
@@ -50,14 +51,16 @@ def build_rag_chain(retriever: VectorStoreRetriever) -> RetrievalQA:
         )
         logger.info(
             "Built RetrievalQA chain model='{}' temperature={} max_tokens={}",
-            MODEL_NAME,
-            TEMPERATURE,
-            MAX_TOKENS,
+            LLM_MODEL,
+            LLM_TEMPERATURE,
+            LLM_MAX_TOKENS,
         )
         return chain
     except Exception as exc:
         logger.exception("Failed to build RetrievalQA chain.")
-        raise RuntimeError("Failed to build RAG chain.") from exc
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure `ollama serve` is running at http://localhost:11434"
+        ) from exc
 
 
 def query_rag(chain: RetrievalQA, question: str) -> dict[str, Any]:
@@ -92,4 +95,10 @@ def query_rag(chain: RetrievalQA, question: str) -> dict[str, Any]:
         return {"answer": answer, "sources": unique_sources}
     except Exception as exc:
         logger.exception("RAG query failed.")
-        return {"answer": f"Error: {exc}", "sources": []}
+        return {
+            "answer": (
+                "Error: Could not reach Ollama. Make sure `ollama serve` is running "
+                "at http://localhost:11434"
+            ),
+            "sources": [],
+        }

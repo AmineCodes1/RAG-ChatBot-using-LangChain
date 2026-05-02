@@ -1,4 +1,4 @@
-"""Embedding and ChromaDB upsert logic for the ingestion pipeline."""
+"""Embedding and vectorstore upsert logic for the ingestion pipeline."""
 
 from __future__ import annotations
 
@@ -6,76 +6,75 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-import chromadb
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from loguru import logger
 
-from config import (
-    CHROMA_PERSIST_DIR,
-    COLLECTION_NAME,
-    EMBEDDING_MODEL,
-    OPENAI_API_KEY,
-)
+from config import CHROMA_PERSIST_DIR, COLLECTION_NAME, EMBEDDING_MODEL, OLLAMA_BASE_URL
 from ingestion.chunker import chunk_documents
 from ingestion.loader import load_document
 
 
-def get_chroma_client() -> chromadb.PersistentClient:
-    """Create a persistent ChromaDB client for local vector storage.
+def get_chroma_client() -> Chroma:
+    """Create a LangChain Chroma vectorstore for local persistent storage.
 
     Returns:
-        A ChromaDB PersistentClient configured with the local persistence path.
+        A Chroma vectorstore configured for local Ollama embeddings.
 
     Raises:
-        RuntimeError: If client initialization fails.
+        RuntimeError: If vectorstore initialization fails.
     """
     try:
         persist_dir = Path(CHROMA_PERSIST_DIR)
         persist_dir.mkdir(parents=True, exist_ok=True)
-
-        client = chromadb.PersistentClient(path=str(persist_dir))
-        logger.info("Initialized Chroma persistent client at '{}'", persist_dir)
-        return client
+        embeddings = OllamaEmbeddings(
+            model=EMBEDDING_MODEL,
+            base_url=OLLAMA_BASE_URL,
+        )
+        vectorstore = Chroma(
+            collection_name=COLLECTION_NAME,
+            persist_directory=str(persist_dir),
+            embedding_function=embeddings,
+        )
+        logger.info("Initialized Chroma vectorstore at '{}'", persist_dir)
+        return vectorstore
     except Exception as exc:
-        logger.exception("Failed to initialize Chroma client.")
-        raise RuntimeError("Failed to initialize ChromaDB persistent client.") from exc
+        logger.exception("Failed to initialize Chroma vectorstore.")
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure `ollama serve` is running at http://localhost:11434"
+        ) from exc
 
 
-def get_or_create_collection(client: chromadb.PersistentClient) -> chromadb.Collection:
-    """Get or create the configured ChromaDB collection.
+def get_or_create_collection(client: Chroma) -> Chroma:
+    """Return the configured Chroma vectorstore collection wrapper.
 
     Args:
-        client: Initialized ChromaDB PersistentClient.
+        client: Initialized Chroma vectorstore.
 
     Returns:
-        The requested ChromaDB collection with OpenAI embedding function.
+        The same Chroma vectorstore instance.
 
     Raises:
-        RuntimeError: If collection creation or retrieval fails.
+        RuntimeError: If the collection cannot be accessed.
     """
     try:
-        embedding_function = OpenAIEmbeddingFunction(
-            api_key=OPENAI_API_KEY,
-            model_name=EMBEDDING_MODEL,
-        )
-        collection = client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=embedding_function,
-        )
+        _ = client._collection
         logger.info("Using Chroma collection '{}'", COLLECTION_NAME)
-        return collection
+        return client
     except Exception as exc:
-        logger.exception("Failed getting or creating Chroma collection.")
-        raise RuntimeError("Failed to get or create Chroma collection.") from exc
+        logger.exception("Failed accessing Chroma collection.")
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure `ollama serve` is running at http://localhost:11434"
+        ) from exc
 
 
-def embed_and_store(chunks: list[Document], collection: chromadb.Collection) -> int:
-    """Embed chunks and upsert only unseen chunk IDs into ChromaDB.
+def embed_and_store(chunks: list[Document], collection: Chroma) -> int:
+    """Embed chunks and add only unseen IDs into Chroma.
 
     Args:
-        chunks: Chunked documents to embed and store.
-        collection: Target ChromaDB collection.
+        chunks: Chunked documents to embed and persist.
+        collection: Target Chroma vectorstore.
 
     Returns:
         Number of newly added chunks.
@@ -112,10 +111,9 @@ def embed_and_store(chunks: list[Document], collection: chromadb.Collection) -> 
 
         for batch_start in range(0, len(records_to_add), 100):
             batch = records_to_add[batch_start : batch_start + 100]
-            collection.upsert(
+            collection.add_documents(
+                documents=[chunk for _, chunk in batch],
                 ids=[chunk_id for chunk_id, _ in batch],
-                documents=[chunk.page_content for _, chunk in batch],
-                metadatas=[chunk.metadata for _, chunk in batch],
             )
 
         logger.info(
@@ -131,7 +129,9 @@ def embed_and_store(chunks: list[Document], collection: chromadb.Collection) -> 
         return len(records_to_add)
     except Exception as exc:
         logger.exception("Failed embedding and storing chunks.")
-        raise RuntimeError("Failed to embed and store chunks in ChromaDB.") from exc
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure `ollama serve` is running at http://localhost:11434"
+        ) from exc
 
 
 def run_ingestion_pipeline(file_paths: list[str]) -> dict[str, int]:
@@ -185,7 +185,9 @@ def run_ingestion_pipeline(file_paths: list[str]) -> dict[str, int]:
         return result
     except Exception as exc:
         logger.exception("Critical ingestion pipeline failure.")
-        raise RuntimeError("Ingestion pipeline failed due to a critical error.") from exc
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure `ollama serve` is running at http://localhost:11434"
+        ) from exc
 
 
 def _build_chunk_id(chunk: Document) -> str:

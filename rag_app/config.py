@@ -1,35 +1,28 @@
-"""Central configuration for the RAG application."""
+"""Central configuration for the local Ollama-based RAG application."""
 
-import os
-from typing import Final
+from __future__ import annotations
 
-from dotenv import load_dotenv
+import requests
+from loguru import logger
 
-load_dotenv()  # Load environment variables from a local .env file into process env.
+OLLAMA_BASE_URL = "http://localhost:11434"
+LLM_MODEL = "llama3.2"
+EMBEDDING_MODEL = "nomic-embed-text"
+CHROMA_PERSIST_DIR = "./chroma_db"
+COLLECTION_NAME = "rag_documents"
+CHUNK_SIZE = 512
+CHUNK_OVERLAP = 64
+TOP_K = 5
+LLM_TEMPERATURE = 0
+LLM_MAX_TOKENS = 1024
+SUPPORTED_EXTENSIONS = [".pdf", ".txt", ".docx"]
 
-OPENAI_API_KEY: Final[str] = os.environ.get("OPENAI_API_KEY", "").strip()  # OpenAI API key for embeddings and LLM calls.
-if not OPENAI_API_KEY:
-    raise ValueError(
-        "OPENAI_API_KEY is missing. Set it in your environment or .env file."
-    )
 
-CHROMA_PERSIST_DIR: Final[str] = "./chroma_db"  # Local directory where ChromaDB stores persistent vector data.
-COLLECTION_NAME: Final[str] = "rag_documents"  # ChromaDB collection name used for all indexed documents.
-
-CHUNK_SIZE: Final[int] = 512  # Default max token/character window per text chunk for retrieval indexing.
-CHUNK_OVERLAP: Final[int] = 64  # Default overlap between adjacent chunks to preserve context continuity.
-
-TOP_K: Final[int] = 5  # Default number of documents to retrieve from the vector store per query.
-RERANK_TOP_N: Final[int] = 3  # Default number of retrieved documents kept after optional re-ranking.
-
-MODEL_NAME: Final[str] = "gpt-4o-mini"  # OpenAI chat model used to generate grounded answers.
-TEMPERATURE: Final[float] = 0  # Deterministic decoding for factual RAG responses.
-MAX_TOKENS: Final[int] = 1024  # Maximum completion length for answer generation.
-
-EMBEDDING_MODEL: Final[str] = "text-embedding-3-small"  # OpenAI embedding model used for document/query vectors.
-
-SUPPORTED_EXTENSIONS: Final[list[str]] = [
-    ".pdf",
-    ".txt",
-    ".docx",
-]  # Allowed file extensions for ingestion loaders.
+def check_ollama_running() -> bool:
+    """Check whether the local Ollama service is reachable."""
+    try:
+        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
+        return response.status_code == 200
+    except Exception:
+        logger.warning("Ollama is not reachable at {}", OLLAMA_BASE_URL)
+        return False

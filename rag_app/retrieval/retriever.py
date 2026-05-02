@@ -1,15 +1,17 @@
 """Retriever setup utilities for query-time vector search."""
 
+from pathlib import Path
+
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain_openai import OpenAIEmbeddings
 from loguru import logger
 
 from config import (
     CHROMA_PERSIST_DIR,
     COLLECTION_NAME,
     EMBEDDING_MODEL,
-    OPENAI_API_KEY,
+    OLLAMA_BASE_URL,
     TOP_K,
 )
 
@@ -24,9 +26,10 @@ def get_vectorstore() -> Chroma:
         RuntimeError: If vectorstore creation fails.
     """
     try:
-        embeddings = OpenAIEmbeddings(
+        Path(CHROMA_PERSIST_DIR).mkdir(parents=True, exist_ok=True)
+        embeddings = OllamaEmbeddings(
             model=EMBEDDING_MODEL,
-            api_key=OPENAI_API_KEY,
+            base_url=OLLAMA_BASE_URL,
         )
         vectorstore = Chroma(
             collection_name=COLLECTION_NAME,
@@ -41,7 +44,9 @@ def get_vectorstore() -> Chroma:
         return vectorstore
     except Exception as exc:
         logger.exception("Failed to initialize Chroma vectorstore.")
-        raise RuntimeError("Failed to initialize Chroma vectorstore.") from exc
+        raise RuntimeError(
+            "Could not reach Ollama. Make sure `ollama serve` is running at http://localhost:11434"
+        ) from exc
 
 
 def get_retriever(vectorstore: Chroma, top_k: int = TOP_K) -> VectorStoreRetriever:
